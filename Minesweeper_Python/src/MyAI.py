@@ -56,19 +56,22 @@ class MyAI( AI ):
 
 	def getAction(self, number: int) -> Action:
 
+		print(f'Exploring {self.currentTile}')
 		self.explored.add(self.currentTile)
 		self.unexplored.discard(self.currentTile)
   
 		neighbors = self.getNeighbors(self.currentTile[0], self.currentTile[1])
+		print(f'Got current neighbors: {neighbors}')
   
-		if number > 0:
-			unflagged_neighbors = [n for n in neighbors if n not in self.flaggedTiles]
-			if number == len(unflagged_neighbors):
-				for neighbor in unflagged_neighbors:
-					self.flaggedTiles.add(neighbor)
+		unflagged_neighbors = [n for n in neighbors if n not in self.flaggedTiles]
+		if number == len(unflagged_neighbors):
+			for neighbor in unflagged_neighbors:
+				self.flaggedTiles.add(neighbor)
+			print(f"adding these neighbors to flaggedTiles: {unflagged_neighbors}")
      
 		if self.flaggedTiles:
 			toFlag = self.flaggedTiles.pop()
+			print(f"flagging {toFlag}")
 			return Action(AI.Action.FLAG, toFlag[0], toFlag[1])
 		
 		if number == 0:
@@ -76,11 +79,13 @@ class MyAI( AI ):
 			for neighbor in neighbors:
 				if neighbor not in self.explored and neighbor not in self.safeTiles:
 					self.safeTiles.append(neighbor) #(X, Y)
+			print(f"Adding these tiles to safeTiles: {neighbors}")
 
 		#if there are tiles in safeTiles, then we can go through and uncover them
 		if self.safeTiles:
 			nextTile = self.safeTiles.popleft()
 			self.currentTile = nextTile
+			print(f"uncovering {nextTile}")
 			return Action(AI.Action.UNCOVER, nextTile[0], nextTile[1])
 
 
@@ -91,7 +96,8 @@ class MyAI( AI ):
 			nextTile = min(unexplored_list, key=lambda t: self.getDistance(self.currentTile, t))
 			self.unexplored.remove(nextTile)
 			self.currentTile = nextTile
+			print(f"uncovering random tile {nextTile}")
 			return Action(AI.Action.UNCOVER, nextTile[0], nextTile[1])
 			
-  
+		print("Leaving")
 		return Action(AI.Action.LEAVE)
