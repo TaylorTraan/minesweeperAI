@@ -64,6 +64,7 @@ class MyAI( AI ):
 		print(f'Got current neighbors: {neighbors}')
   
 		unflagged_neighbors = [n for n in neighbors if n not in self.flaggedTiles]
+		print(f"unflagged Neighbors: {unflagged_neighbors}")
 		if number == len(unflagged_neighbors):
 			for neighbor in unflagged_neighbors:
 				self.flaggedTiles.add(neighbor)
