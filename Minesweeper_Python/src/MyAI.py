@@ -35,9 +35,10 @@ class MyAI( AI ):
 		self.unexplored = {(i, j) for i in range(rowDimension) for j in range(colDimension)}
 		self.unexplored.remove((startX, startY))
 
+	def getDistance(self, tile1, tile2):
+		return abs(tile1[0] - tile2[0]) + abs(tile1[1] - tile2[1])
 
 	def getNeighbors(self, x, y):
-     
 		neighbors = []
 		for i in [-1, 0, 1]:
 			for j in [-1, 0, 1]:
@@ -61,8 +62,9 @@ class MyAI( AI ):
 		neighbors = self.getNeighbors(self.currentTile[0], self.currentTile[1])
   
 		if number > 0:
-			if number == len(neighbors):
-				for neighbor in neighbors:
+			unflagged_neighbors = [n for n in neighbors if n not in self.flaggedTiles]
+			if number == len(unflagged_neighbors):
+				for neighbor in unflagged_neighbors:
 					self.flaggedTiles.add(neighbor)
      
 		if self.flaggedTiles:
@@ -84,12 +86,12 @@ class MyAI( AI ):
 
 		#if not safe tiles in queue, pop a random unexplored tile
 		if self.unexplored:
-			nextTile = min(self.unexplored, key=lambda t: self.getDistance(self.currentTile, t))
+			unexplored_list = list(self.unexplored)
+			random.shuffle(unexplored_list)
+			nextTile = min(unexplored_list, key=lambda t: self.getDistance(self.currentTile, t))
 			self.unexplored.remove(nextTile)
 			self.currentTile = nextTile
 			return Action(AI.Action.UNCOVER, nextTile[0], nextTile[1])
 			
   
-		if not self.safeTiles and not self.flaggedTiles and not self.unexplored:
-			return Action(AI.Action.LEAVE)
-		
+		return Action(AI.Action.LEAVE)
