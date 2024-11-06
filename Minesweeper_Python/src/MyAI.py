@@ -75,7 +75,9 @@ class MyAI( AI ):
 
 		if number == len(unflagged_neighbors):
 			for neighbor in unflagged_neighbors:
-				self.flaggedTiles.add(neighbor)
+				if neighbor not in self.flaggedTiles:
+					self.flaggedTiles.add(neighbor)
+					self.unexplored.discard(neighbor)
 			#print(f"adding these neighbors to flaggedTiles: {unflagged_neighbors}")
    
 
@@ -89,15 +91,15 @@ class MyAI( AI ):
 			return Action(AI.Action.FLAG, toFlag[0], toFlag[1])
 
 		# Only flag tiles when there are no safe moves, and suspicion is strong enough
-		suspicion_threshold = 5  # Adjust as needed
 		if not self.safeTiles and len(self.flaggedTiles) < self.totalMines:
-			most_suspicious = [
-				(tile, count) for tile, count in self.susTiles.most_common(self.totalMines - len(self.flaggedTiles))
-				if count >= suspicion_threshold
-			]
-			for tile, _ in most_suspicious:
+			highest_sus_tiles = sorted(
+				self.susTiles.items(), key=lambda item: -item[1]
+			)[:self.totalMines - len(self.flaggedTiles)]
+			
+			for tile, count in highest_sus_tiles:
 				if tile not in self.flaggedTiles:
 					self.flaggedTiles.add(tile)
+					# return Action(AI.Action.FLAG, tile[0], tile[1])
 		
 		if number == 0:
 			#get surrounding tiles and add to safeTiles; remove any tiles from sus tiles if in
@@ -107,6 +109,14 @@ class MyAI( AI ):
 				if neighbor not in self.explored and neighbor not in self.safeTiles:
 					self.safeTiles.append(neighbor) #(X, Y)
 			#print(f"Adding these tiles to safeTiles: {neighbors}")
+
+		for neighbor in neighbors:
+			neighbor_neighbors = self.getNeighbors(neighbor[0], neighbor[1])
+			unflagged_neighbors = [n for n in neighbor_neighbors if n not in self.flaggedTiles]
+			if len(unflagged_neighbors) == 1 and number == 1:
+				self.flaggedTiles.add(unflagged_neighbors[0])
+				return Action(AI.Action.FLAG, unflagged_neighbors[0][0], unflagged_neighbors[0][1])
+
 
 		#if there are tiles in safeTiles, then we can go through and uncover them
 		if self.safeTiles:
