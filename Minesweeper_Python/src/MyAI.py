@@ -14,7 +14,7 @@
 
 from AI import AI
 from Action import Action
-from collections import deque
+from collections import deque, Counter
 import random
 
 
@@ -35,7 +35,7 @@ class MyAI( AI ):
 		self.unexplored = {(i, j) for i in range(rowDimension) for j in range(colDimension)}
 		self.unexplored.remove((startX, startY))
 		
-		self.markSafe(self.startX, self.startY)
+		self.susTiles = Counter() #key = tile coordinate, value = how many times the sustile has been hit {increases probability}
 
 
 	def getDistance(self, tile1, tile2):
@@ -56,23 +56,9 @@ class MyAI( AI ):
 					neighbors.append(neighbor)
 		return neighbors
 
-
-	def markSafe(self, x, y):
-        # BFS/DFS to uncover clusters of safe tiles
-		queue = deque([(x, y)])
-		while queue:
-			tile = queue.popleft()
-			if tile in self.explored or tile in self.flaggedTiles:
-				continue
-			self.safeTiles.append(tile)
-			self.explored.add(tile)
-			self.unexplored.discard(tile)
-
-			# Recursively add zero-neighbor tiles to safe list
-			neighbors = self.getNeighbors(tile[0], tile[1])
-			for neighbor in neighbors:
-				if neighbor not in self.explored:
-					queue.append(neighbor)
+	
+	def markSus(self):
+		pass
 
 
 	def getAction(self, number: int) -> Action:
@@ -86,24 +72,41 @@ class MyAI( AI ):
   
 		unflagged_neighbors = [n for n in neighbors if n not in self.flaggedTiles] #tbf getNeighbors already filters out flagged tiles, but this is another precaution
 		#print(f"unflagged Neighbors: {unflagged_neighbors}")
+
 		if number == len(unflagged_neighbors):
 			for neighbor in unflagged_neighbors:
 				self.flaggedTiles.add(neighbor)
 			#print(f"adding these neighbors to flaggedTiles: {unflagged_neighbors}")
+   
+
+		if number > 0:
+			for neighbor in neighbors:
+				self.susTiles[neighbor] += 1
      
 		if self.flaggedTiles:
 			toFlag = self.flaggedTiles.pop()
 			#print(f"flagging {toFlag}")
 			return Action(AI.Action.FLAG, toFlag[0], toFlag[1])
+
+		# Only flag tiles when there are no safe moves, and suspicion is strong enough
+		suspicion_threshold = 5  # Adjust as needed
+		if not self.safeTiles and len(self.flaggedTiles) < self.totalMines:
+			most_suspicious = [
+				(tile, count) for tile, count in self.susTiles.most_common(self.totalMines - len(self.flaggedTiles))
+				if count >= suspicion_threshold
+			]
+			for tile, _ in most_suspicious:
+				if tile not in self.flaggedTiles:
+					self.flaggedTiles.add(tile)
 		
-		# if number == 0:
-		# 	#get surrounding tiles and add to safeTiles; remove any tiles from sus tiles if in
-		# 	for neighbor in neighbors:
-		# 		if neighbor in self.susTiles:
-		# 			self.susTiles.remove(neighbor)
-		# 		if neighbor not in self.explored and neighbor not in self.safeTiles:
-		# 			self.safeTiles.append(neighbor) #(X, Y)
-		# 	#print(f"Adding these tiles to safeTiles: {neighbors}")
+		if number == 0:
+			#get surrounding tiles and add to safeTiles; remove any tiles from sus tiles if in
+			for neighbor in neighbors:
+				if neighbor in self.susTiles:
+					del self.susTiles[neighbor]
+				if neighbor not in self.explored and neighbor not in self.safeTiles:
+					self.safeTiles.append(neighbor) #(X, Y)
+			#print(f"Adding these tiles to safeTiles: {neighbors}")
 
 		#if there are tiles in safeTiles, then we can go through and uncover them
 		if self.safeTiles:
@@ -127,10 +130,17 @@ class MyAI( AI ):
 
 
 	def random_uncover(self):
+		# Convert unexplored tiles to a list
 		unexplored_list = list(self.unexplored)
-		random.shuffle(unexplored_list)
-		nextTile = min(unexplored_list, key=lambda t: self.getDistance(self.currentTile, t))
+		random.shuffle(unexplored_list)  # Shuffle for randomness among equally suspicious tiles
+
+		# Select the tile with the lowest suspicion count, using distance as a tiebreaker
+		nextTile = min(
+			unexplored_list,
+			key=lambda t: (self.susTiles.get(t, 0), self.getDistance(self.currentTile, t))
+		)
+
+		# Remove the selected tile from unexplored and set it as current
 		self.unexplored.remove(nextTile)
 		self.currentTile = nextTile
-		#print(f"uncovering random tile {nextTile}")
 		return nextTile
