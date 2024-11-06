@@ -34,9 +34,13 @@ class MyAI( AI ):
 		self.explored = set()
 		self.unexplored = {(i, j) for i in range(rowDimension) for j in range(colDimension)}
 		self.unexplored.remove((startX, startY))
+		
+		self.markSafe(self.startX, self.startY)
+
 
 	def getDistance(self, tile1, tile2):
 		return abs(tile1[0] - tile2[0]) + abs(tile1[1] - tile2[1])
+
 
 	def getNeighbors(self, x, y):
 		neighbors = []
@@ -52,7 +56,24 @@ class MyAI( AI ):
 					neighbors.append(neighbor)
 		return neighbors
 
-				
+
+	def markSafe(self, x, y):
+        # BFS/DFS to uncover clusters of safe tiles
+		queue = deque([(x, y)])
+		while queue:
+			tile = queue.popleft()
+			if tile in self.explored or tile in self.flaggedTiles:
+				continue
+			self.safeTiles.append(tile)
+			self.explored.add(tile)
+			self.unexplored.discard(tile)
+
+			# Recursively add zero-neighbor tiles to safe list
+			neighbors = self.getNeighbors(tile[0], tile[1])
+			for neighbor in neighbors:
+				if neighbor not in self.explored:
+					queue.append(neighbor)
+
 
 	def getAction(self, number: int) -> Action:
 
@@ -63,7 +84,7 @@ class MyAI( AI ):
 		neighbors = self.getNeighbors(self.currentTile[0], self.currentTile[1])
 		#print(f'Got current neighbors: {neighbors}')
   
-		unflagged_neighbors = [n for n in neighbors if n not in self.flaggedTiles]
+		unflagged_neighbors = [n for n in neighbors if n not in self.flaggedTiles] #tbf getNeighbors already filters out flagged tiles, but this is another precaution
 		#print(f"unflagged Neighbors: {unflagged_neighbors}")
 		if number == len(unflagged_neighbors):
 			for neighbor in unflagged_neighbors:
@@ -75,30 +96,41 @@ class MyAI( AI ):
 			#print(f"flagging {toFlag}")
 			return Action(AI.Action.FLAG, toFlag[0], toFlag[1])
 		
-		if number == 0:
-			#get surrounding tiles and add to safeTiles
-			for neighbor in neighbors:
-				if neighbor not in self.explored and neighbor not in self.safeTiles:
-					self.safeTiles.append(neighbor) #(X, Y)
-			#print(f"Adding these tiles to safeTiles: {neighbors}")
+		# if number == 0:
+		# 	#get surrounding tiles and add to safeTiles; remove any tiles from sus tiles if in
+		# 	for neighbor in neighbors:
+		# 		if neighbor in self.susTiles:
+		# 			self.susTiles.remove(neighbor)
+		# 		if neighbor not in self.explored and neighbor not in self.safeTiles:
+		# 			self.safeTiles.append(neighbor) #(X, Y)
+		# 	#print(f"Adding these tiles to safeTiles: {neighbors}")
 
 		#if there are tiles in safeTiles, then we can go through and uncover them
 		if self.safeTiles:
-			nextTile = self.safeTiles.popleft()
-			self.currentTile = nextTile
-			#print(f"uncovering {nextTile}")
+			nextTile = self.safe_uncover()
 			return Action(AI.Action.UNCOVER, nextTile[0], nextTile[1])
-
 
 		#if not safe tiles in queue, pop a random unexplored tile
 		if self.unexplored:
-			unexplored_list = list(self.unexplored)
-			random.shuffle(unexplored_list)
-			nextTile = min(unexplored_list, key=lambda t: self.getDistance(self.currentTile, t))
-			self.unexplored.remove(nextTile)
-			self.currentTile = nextTile
-			#print(f"uncovering random tile {nextTile}")
+			nextTile = self.random_uncover()
 			return Action(AI.Action.UNCOVER, nextTile[0], nextTile[1])
 			
 		#print("Leaving")
 		return Action(AI.Action.LEAVE)
+
+
+	def safe_uncover(self):
+		nextTile = self.safeTiles.popleft()
+		self.currentTile = nextTile
+		#print(f"uncovering {nextTile}")
+		return nextTile
+
+
+	def random_uncover(self):
+		unexplored_list = list(self.unexplored)
+		random.shuffle(unexplored_list)
+		nextTile = min(unexplored_list, key=lambda t: self.getDistance(self.currentTile, t))
+		self.unexplored.remove(nextTile)
+		self.currentTile = nextTile
+		#print(f"uncovering random tile {nextTile}")
+		return nextTile
