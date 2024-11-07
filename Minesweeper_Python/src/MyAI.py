@@ -14,143 +14,157 @@
 
 from AI import AI
 from Action import Action
-from collections import deque, Counter
-import random
+import queue
+from collections import Counter
+
+class MyAI(AI):
+
+    def __init__(self, rows, cols, totalMines, startX, startY):
+        self.rows = rows
+        self.cols = cols
+        self.totalMines = totalMines
+        self.currentX = startX
+        self.currentY = startY
+        self.totalSafeCells = (rows * cols) - totalMines
+        self.exploredCount = 0
+        
+        self.safeQueue = queue.Queue()
+        self.visitedCells = []
+
+        self.board = []
+        for _ in range(self.rows):
+            row = []
+            for _ in range(self.cols):
+                row.append(-100)
+            self.board.append(row)
+
+        self.sussyLevels = []  # -100 = unexplored
+        for _ in range(self.rows):
+            row = []
+            for _ in range(self.cols):
+                row.append(-100)
+            self.sussyLevels.append(row)
 
 
-class MyAI( AI ):
+    def isValid(self, x, y):
+        return (0 <= x < self.rows) and (0 <= y < self.cols)
+    
 
-	def __init__(self, rowDimension, colDimension, totalMines, startX, startY):
-
-		self.rowDimension = rowDimension
-		self.colDimension = colDimension
-		self.totalMines = totalMines
-		self.startX, self.startY = startX, startY
-  
-		self.currentTile = (startX, startY)
-  
-		self.safeTiles = deque()
-		self.flaggedTiles = set()
-		self.explored = set()
-		self.unexplored = {(i, j) for i in range(rowDimension) for j in range(colDimension)}
-		self.unexplored.remove((startX, startY))
-		
-		self.susTiles = Counter() #key = tile coordinate, value = how many times the sustile has been hit {increases probability}
+    def removeFromSafeQueue(self, x, y):
+        """Remove a specific cell from the safe queue."""
+        newQueue = queue.Queue()
+        while not self.safeQueue.empty():
+            item = self.safeQueue.get()
+            if item != (x, y):
+                newQueue.put(item)
+        self.safeQueue = newQueue
 
 
-	def getDistance(self, tile1, tile2):
-		return abs(tile1[0] - tile2[0]) + abs(tile1[1] - tile2[1])
+    def handleZero(self, number):
+        self.uncoverNeighborCells(self.currentX, self.currentY, number)
+
+        for row in range(self.rows):
+            for col in range(self.cols):
+                if (self.sussyLevels[row][col] == 0 and (row, col) not in self.visitedCells and (row, col) not in self.safeQueue.queue):
+                    self.safeQueue.put((row, col))
+                    continue
+
+                if self.board[row][col] == -100:
+                    continue
+
+                result = self.processEmptyCells(row, col)
+                if result:
+                    return result
+
+                flaggedCount = len(self.findNeighborCells(row, col)[1])
+                if self.board[row][col] == flaggedCount:
+                    self.markSafeCells(row, col)
+
+        if not self.safeQueue.empty():
+            coordinate = self.safeQueue.get()
+            return coordinate[0], coordinate[1], AI.Action.UNCOVER
+        else:
+            for row in range(len(self.board)):
+                for col in range(len(self.board[row])):
+                    if self.board[row][col] == -100:
+                        return row, col, AI.Action.UNCOVER
+            
+            return 1, 1, AI.Action.LEAVE
 
 
-	def getNeighbors(self, x, y):
-		neighbors = []
-		for i in [-1, 0, 1]:
-			for j in [-1, 0, 1]:
-				if i == 0 and j == 0:
-					continue
-				neighbor = (x+i, y+j)
-				if  (0 <= neighbor[0] < self.rowDimension and 
-    				0 <= neighbor[1] < self.colDimension and 
-        			neighbor not in self.explored and 
-           			neighbor not in self.flaggedTiles):
-					neighbors.append(neighbor)
-		return neighbors
+    def markSafeCells(self, row, col):
+        """Mark all neighbors of a cell as safe if they are unflagged."""
+        for i in range(row - 1, row + 2):
+            for j in range(col - 1, col + 2):
+                if (i == row and j == col) or not self.isValid(i, j):
+                    continue
+                self.sussyLevels[i][j] = 0
+                if (i, j) not in self.visitedCells and (i, j) not in self.safeQueue.queue:
+                    self.safeQueue.put((i, j))
+
+    def getAction(self, number: int) -> Action:
+        if self.exploredCount == self.totalSafeCells:
+            return Action(AI.Action.LEAVE, 1, 1)
+        
+        x, y = self.currentX, self.currentY
+        self.board[x][y] = number
+        self.sussyLevels[x][y] = 0
+        
+        self.currentX, self.currentY, actionType = self.handleZero(number)
+
+        if actionType != AI.Action.FLAG:
+            self.exploredCount += 1
+        self.visitedCells.append((self.currentX, self.currentY))
+        return Action(actionType, self.currentX, self.currentY)
+    
+    
+    def uncoverNeighborCells(self, x, y, number):
+        """Mark neighbors as safe if applicable."""
+        for i in range(x - 1, x + 2):
+            for j in range(y - 1, y + 2):
+                if (i == x and j == y) or not self.isValid(i, j):
+                    continue
+                if (i, j) not in self.visitedCells and (i, j) not in self.safeQueue.queue:
+                    if number == 0:
+                        self.sussyLevels[i][j] = 0
+                        self.safeQueue.put((i, j))
+                    elif self.sussyLevels[i][j] != 0:
+                        self.sussyLevels[i][j] = max(1, self.sussyLevels[i][j] + 1)
+                        
+    
+    def processEmptyCells(self, row, col):
+        """Handle empty cells around a given cell."""
+        vacant, flagged = self.findNeighborCells(row, col)
+        if vacant and len(vacant) == self.board[row][col] - len(flagged):
+            vacantX, vacantY = vacant.pop(0)
+            self.reduceProbabilityAround(row, col)
+            self.removeFromSafeQueue(vacantX, vacantY)
+            return vacantX, vacantY, AI.Action.FLAG
+        return None
+    
+    
+    def reduceProbabilityAround(self, row, col):
+        """Reduce probability values of neighbors around a given cell."""
+        for i in range(row - 1, row + 2):
+            for j in range(col - 1, col + 2):
+                if (i == row and j == col) or not self.isValid(i, j):
+                    continue
+                if self.sussyLevels[i][j] > 0:
+                    self.sussyLevels[i][j] -= 1
+    
+    
+    def findNeighborCells(self, row, col):
+        """Identify vacant and flagged neighbors around a given cell."""
+        vacant, flagged = [], []
+        for i in range(row - 1, row + 2):
+            for j in range(col - 1, col + 2):
+                if (i == row and j == col) or not self.isValid(i, j):
+                    continue
+                if self.board[i][j] == -100:
+                    vacant.append((i, j))
+                elif self.board[i][j] == -1:
+                    flagged.append((i, j))
+        return vacant, flagged
 
 	
-	def markSus(self):
-		pass
-
-
-	def getAction(self, number: int) -> Action:
-
-		#print(f'Exploring {self.currentTile}')
-		self.explored.add(self.currentTile)
-		self.unexplored.discard(self.currentTile)
-  
-		neighbors = self.getNeighbors(self.currentTile[0], self.currentTile[1])
-		#print(f'Got current neighbors: {neighbors}')
-  
-		unflagged_neighbors = [n for n in neighbors if n not in self.flaggedTiles] #tbf getNeighbors already filters out flagged tiles, but this is another precaution
-		#print(f"unflagged Neighbors: {unflagged_neighbors}")
-
-		if number == len(unflagged_neighbors):
-			for neighbor in unflagged_neighbors:
-				if neighbor not in self.flaggedTiles:
-					self.flaggedTiles.add(neighbor)
-					self.unexplored.discard(neighbor)
-			#print(f"adding these neighbors to flaggedTiles: {unflagged_neighbors}")
-   
-
-		if number > 0:
-			for neighbor in neighbors:
-				self.susTiles[neighbor] += 1
-     
-		if self.flaggedTiles:
-			toFlag = self.flaggedTiles.pop()
-			#print(f"flagging {toFlag}")
-			return Action(AI.Action.FLAG, toFlag[0], toFlag[1])
-
-		# Only flag tiles when there are no safe moves, and suspicion is strong enough
-		if not self.safeTiles and len(self.flaggedTiles) < self.totalMines:
-			highest_sus_tiles = sorted(
-				self.susTiles.items(), key=lambda item: -item[1]
-			)[:self.totalMines - len(self.flaggedTiles)]
-			
-			for tile, count in highest_sus_tiles:
-				if tile not in self.flaggedTiles:
-					self.flaggedTiles.add(tile)
-					# return Action(AI.Action.FLAG, tile[0], tile[1])
-		
-		if number == 0:
-			#get surrounding tiles and add to safeTiles; remove any tiles from sus tiles if in
-			for neighbor in neighbors:
-				if neighbor in self.susTiles:
-					del self.susTiles[neighbor]
-				if neighbor not in self.explored and neighbor not in self.safeTiles:
-					self.safeTiles.append(neighbor) #(X, Y)
-			#print(f"Adding these tiles to safeTiles: {neighbors}")
-
-		for neighbor in neighbors:
-			neighbor_neighbors = self.getNeighbors(neighbor[0], neighbor[1])
-			unflagged_neighbors = [n for n in neighbor_neighbors if n not in self.flaggedTiles]
-			if len(unflagged_neighbors) == 1 and number == 1:
-				self.flaggedTiles.add(unflagged_neighbors[0])
-				return Action(AI.Action.FLAG, unflagged_neighbors[0][0], unflagged_neighbors[0][1])
-
-
-		#if there are tiles in safeTiles, then we can go through and uncover them
-		if self.safeTiles:
-			nextTile = self.safe_uncover()
-			return Action(AI.Action.UNCOVER, nextTile[0], nextTile[1])
-
-		#if not safe tiles in queue, pop a random unexplored tile
-		if self.unexplored:
-			nextTile = self.random_uncover()
-			return Action(AI.Action.UNCOVER, nextTile[0], nextTile[1])
-			
-		#print("Leaving")
-		return Action(AI.Action.LEAVE)
-
-
-	def safe_uncover(self):
-		nextTile = self.safeTiles.popleft()
-		self.currentTile = nextTile
-		#print(f"uncovering {nextTile}")
-		return nextTile
-
-
-	def random_uncover(self):
-		# Convert unexplored tiles to a list
-		unexplored_list = list(self.unexplored)
-		random.shuffle(unexplored_list)  # Shuffle for randomness among equally suspicious tiles
-
-		# Select the tile with the lowest suspicion count, using distance as a tiebreaker
-		nextTile = min(
-			unexplored_list,
-			key=lambda t: (self.susTiles.get(t, 0), self.getDistance(self.currentTile, t))
-		)
-
-		# Remove the selected tile from unexplored and set it as current
-		self.unexplored.remove(nextTile)
-		self.currentTile = nextTile
-		return nextTile
+ 
