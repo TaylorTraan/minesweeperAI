@@ -86,7 +86,7 @@ class MyAI(AI):
         else:
             for row in range(len(self.board)):
                 for col in range(len(self.board[row])):
-                    if self.board[row][col] == -100:
+                    if self.isValid(row, col) and self.board[row][col] == -100:
                         return row, col, AI.Action.UNCOVER
             
             return 1, 1, AI.Action.LEAVE
